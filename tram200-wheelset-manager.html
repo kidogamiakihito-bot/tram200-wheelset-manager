@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>札幌市電 輪軸管理システム</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Meiryo', 'Yu Gothic', sans-serif; font-size: 14px;
+       background: #1a1a2e; color: #e0e0e0; display: flex; flex-direction: column;
+       height: 100vh; overflow: hidden; }
+
+/* ヘッダー */
+#header { background: #16213e; padding: 8px 16px; display: flex;
+          align-items: center; gap: 10px; border-bottom: 2px solid #0f3460;
+          flex-shrink: 0; flex-wrap: wrap; }
+#header h1 { font-size: 15px; color: #a8d8ea; white-space: nowrap; }
+#year-display { font-size: 18px; font-weight: bold; color: #f0c27f;
+                min-width: 36px; text-align: center; }
+#header button { padding: 4px 10px; background: #0f3460; color: #e0e0e0;
+                 border: 1px solid #a8d8ea; border-radius: 4px; cursor: pointer;
+                 font-size: 12px; }
+#header button:hover { background: #1a4a7a; }
+.btn-reset { color: #e07070 !important; border-color: #e07070 !important; }
+.btn-reset:hover { background: #2a1a1a !important; }
+.spacer { flex: 1; }
+.hidden-input { display: none; }
+
+/* メインレイアウト */
+#main { display: flex; flex: 1; overflow: hidden; }
+#scroll-area { flex: 1; overflow-y: auto; padding: 12px; }
+#diary-panel { width: 230px; background: #16213e; border-left: 2px solid #0f3460;
+               display: flex; flex-direction: column; flex-shrink: 0; }
+#diary-panel h3 { padding: 8px 12px; font-size: 13px; color: #a8d8ea;
+                  border-bottom: 1px solid #0f3460; }
+#diary-log { flex: 1; overflow-y: auto; padding: 8px; font-size: 11px;
+             font-family: monospace; line-height: 1.7; }
+#diary-log div { padding: 1px 0; word-break: break-all; }
+#diary-export { padding: 8px; border-top: 1px solid #0f3460; }
+#diary-export button { width: 100%; padding: 5px; background: #0f3460;
+                       color: #e0e0e0; border: 1px solid #a8d8ea; border-radius: 4px;
+                       cursor: pointer; font-size: 11px; }
+
+/* グループセクション */
+.group-section { margin-bottom: 16px; }
+.group-title { font-size: 13px; color: #a8d8ea; margin-bottom: 8px;
+               padding: 4px 8px; background: #0f3460; border-radius: 4px; }
+.vehicle-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+/* 車両カード */
+.vehicle-card { background: #16213e; border: 2px solid #0f3460; border-radius: 8px;
+                padding: 10px; }
+.vehicle-card.separated { border-color: #f0c27f; box-shadow: 0 0 8px #f0c27f44; }
+.vehicle-card.retired { opacity: 0.4; pointer-events: none; }
+.vehicle-card-header { display: flex; align-items: center; gap: 6px;
+                        margin-bottom: 12px; flex-wrap: wrap; }
+.vehicle-name { font-weight: bold; font-size: 14px; flex: 1; }
+.sep-label { font-size: 10px; color: #f0c27f; padding: 1px 4px;
+             border: 1px solid #f0c27f; border-radius: 3px; }
+.vehicle-card-header button { padding: 3px 8px; font-size: 11px; border-radius: 3px;
+                               cursor: pointer; border: 1px solid; }
+.btn-sep { background: #1a3a1a; color: #7dce82; border-color: #7dce82; }
+.btn-sep:hover { background: #2a4a2a; }
+.btn-sep.active { background: #2a4a2a; color: #f0c27f; border-color: #f0c27f; }
+.btn-retire { background: #3a1a1a; color: #e07070; border-color: #e07070; }
+.btn-retire:hover { background: #4a2a2a; }
+.slots { display: flex; gap: 6px; flex-wrap: wrap; }
+.slot { width: 62px; height: 36px; border: 2px dashed #2a4a6a; border-radius: 6px;
+        display: flex; align-items: center; justify-content: center;
+        position: relative; margin-bottom: 20px; }
+.slot.drag-over { border-color: #a8d8ea; background: #1a3a4a; }
+.slot-label { position: absolute; bottom: -17px; left: 50%; transform: translateX(-50%);
+              font-size: 10px; color: #607080; white-space: nowrap; }
+
+/* 輪軸チップ（長方形・課題セグメント） */
+.wheelset-chip { width: 54px; height: 30px; border-radius: 4px; cursor: grab;
+                 display: flex; flex-direction: column; overflow: hidden;
+                 position: relative; -webkit-user-select: none; user-select: none;
+                 flex-shrink: 0; }
+.wheelset-chip:hover { transform: scale(1.05); transition: transform 0.1s; }
+.wheelset-chip.dragging { opacity: 0.4; }
+.ws-good { background: #1a7a58; display: flex; align-items: center; justify-content: center;
+           height: 100%; font-size: 9px; color: #a8ecd0; letter-spacing: 1px; }
+.ws-free { background: #a08000; display: flex; align-items: center; justify-content: center;
+           height: 100%; font-size: 14px; font-weight: bold; color: #fff; }
+.ws-issue-seg { flex: 1; display: flex; align-items: center; justify-content: center;
+                font-size: 9px; font-weight: bold; color: #fff;
+                text-shadow: 0 1px 2px #0008; letter-spacing: 0.5px; }
+.ws-issue-seg + .ws-issue-seg { border-top: 1px solid rgba(0,0,0,0.35); }
+.wheelset-chip .issue-badge { position: absolute; top: -4px; right: -4px;
+                               font-size: 10px; line-height: 1; pointer-events: none; }
+
+/* 予備庫・廃棄軸 */
+.spare-section, .scrap-section { margin-top: 8px; padding: 8px;
+                                  background: #0d1a2a; border-radius: 6px; }
+.spare-section h4, .scrap-section h4 { font-size: 11px; color: #607080;
+                                        margin-bottom: 6px; }
+.spare-pool, .scrap-pool { display: flex; flex-wrap: wrap; gap: 8px; min-height: 52px;
+                            padding: 6px; border: 1px dashed #2a4a6a; border-radius: 4px; }
+.spare-pool.drag-over, .scrap-pool.drag-over { border-color: #a8d8ea; background: #1a3a4a; }
+.spare-label { font-size: 8px; color: #a0b0c0; text-align: center;
+               margin-top: 3px; white-space: nowrap; max-width: 56px; overflow: hidden;
+               text-overflow: ellipsis; }
+.spare-item { display: flex; flex-direction: column; align-items: center; }
+
+/* トースト */
+#toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+         background: #c0392b; color: #fff; padding: 10px 20px; border-radius: 6px;
+         font-size: 13px; opacity: 0; transition: opacity 0.3s; pointer-events: none;
+         z-index: 9999; max-width: 400px; text-align: center; }
+#toast.show { opacity: 1; }
+
+/* モーダル */
+#modal-overlay { position: fixed; inset: 0; background: #0008;
+                 display: none; align-items: center; justify-content: center; z-index: 1000; }
+#modal-overlay.show { display: flex; }
+#modal { background: #16213e; border: 2px solid #0f3460; border-radius: 10px;
+         width: 380px; max-height: 80vh; overflow-y: auto; padding: 20px; }
+#modal h2 { font-size: 15px; margin-bottom: 4px; }
+#modal .modal-sub { font-size: 12px; color: #a8d8ea; margin-bottom: 12px; }
+#modal h4 { font-size: 12px; color: #a8d8ea; margin: 12px 0 6px; }
+.issue-list { list-style: none; margin-bottom: 8px; }
+.issue-list li { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 12px; }
+.issue-list .remove-btn { background: none; border: none; color: #e07070;
+                           cursor: pointer; font-size: 14px; line-height: 1; margin-left: auto; }
+.known-issue-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.known-issue-btns button { padding: 4px 10px; border-radius: 4px; font-size: 11px;
+                             cursor: pointer; border: 1px solid; }
+.btn-issue-weld   { background: #3a1010; color: #e74c3c; border-color: #e74c3c; }
+.btn-issue-sleeve { background: #3a2010; color: #e67e22; border-color: #e67e22; }
+.btn-issue-otsu   { background: #2a1a3a; color: #8e44ad; border-color: #8e44ad; }
+button.disabled-issue { opacity: 0.35; cursor: not-allowed; }
+.free-issue-row { display: flex; gap: 6px; }
+.free-issue-row input { flex: 1; background: #0d1a2a; border: 1px solid #2a4a6a;
+                         color: #e0e0e0; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+.free-issue-row button { padding: 4px 10px; background: #0f3460; color: #e0e0e0;
+                          border: 1px solid #a8d8ea; border-radius: 4px; cursor: pointer; font-size: 11px; }
+.history-list { list-style: none; font-size: 11px; font-family: monospace; }
+.history-list li { padding: 2px 0; color: #a0b0c0; }
+#modal-close { margin-top: 16px; width: 100%; padding: 8px; background: #0f3460;
+               color: #e0e0e0; border: 1px solid #a8d8ea; border-radius: 4px; cursor: pointer; }
+
+/* ダイアログ */
+#dialog-overlay { position: fixed; inset: 0; background: #0008;
+                  display: none; align-items: center; justify-content: center; z-index: 2000; }
+#dialog-overlay.show { display: flex; }
+#dialog { background: #16213e; border: 2px solid #0f3460; border-radius: 8px;
+          padding: 20px; min-width: 300px; }
+#dialog h3 { margin-bottom: 12px; font-size: 14px; }
+#dialog p  { font-size: 12px; color: #a0b0c0; margin-bottom: 16px; }
+.dialog-btns { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.dialog-btns button { padding: 6px 14px; border-radius: 4px; cursor: pointer;
+                       font-size: 12px; border: 1px solid; }
+.btn-primary { background: #0f3460; color: #e0e0e0; border-color: #a8d8ea; }
+.btn-danger  { background: #3a1010; color: #e74c3c; border-color: #e74c3c; }
+.btn-cancel  { background: #1a1a2e; color: #a0b0c0; border-color: #607080; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1>札幌市電 輪軸管理システム</h1>
+  <button type="button" onclick="changeYear(-1)">◀</button>
+  <span id="year-display">R8</span>
+  <button type="button" onclick="changeYear(1)">▶</button>
+  <span class="spacer"></span>
+  <button type="button" onclick="saveState()">💾 セーブ</button>
+  <button type="button" onclick="document.getElementById('load-input').click()">📂 ロード</button>
+  <button type="button" class="btn-reset" onclick="confirmReset()">🔄 全リセット</button>
+  <input id="load-input" type="file" accept=".json" class="hidden-input" onchange="loadState(event)">
+</div>
+
+<div id="main">
+  <div id="scroll-area">
+    <div id="group-200" class="group-section"></div>
+    <div id="group-250" class="group-section"></div>
+  </div>
+  <div id="diary-panel">
+    <h3>📋 作業計画</h3>
+    <div id="diary-log"></div>
+    <div id="diary-export">
+      <button type="button" onclick="exportDiary()">📄 TXT エクスポート</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<div id="modal-overlay" onclick="if(event.target===this)closeModal()">
+  <div id="modal"></div>
+</div>
+<div id="dialog-overlay">
+  <div id="dialog"></div>
+</div>
+
+<script>
+'use strict';
+
+// ============================================================
+// 定数
+// ============================================================
+const KNOWN_ISSUES = ['輪心溶接', 'スリーブ有軸', '乙軸'];
+const ISSUE_COLORS = {
+  '輪心溶接':    '#c0392b',
+  'スリーブ有軸': '#d35400',
+  '乙軸':        '#7d3c98',
+};
+const ISSUE_SHORT = {
+  '輪心溶接':    '溶接',
+  'スリーブ有軸': 'スリ',
+  '乙軸':        '乙軸',
+};
+const FISCAL_YEARS = ['R6','R7','R8','R9','R10','R11','R12','R13','R14','R15'];
+
+// ============================================================
+// 初期状態生成
+// ============================================================
+function buildInitialState() {
+  const ws = {};
+
+  const v200order = [244, 221, 222, 246, 214, 211, 212, 241];
+  const issues200 = {
+    'WS-200-001': [{type:'known',name:'輪心溶接'},{type:'known',name:'スリーブ有軸'}],
+    'WS-200-002': [{type:'known',name:'輪心溶接'},{type:'known',name:'スリーブ有軸'}],
+    'WS-200-003': [{type:'known',name:'輪心溶接'}],
+    'WS-200-004': [],
+    'WS-200-005': [],
+    'WS-200-006': [{type:'known',name:'輪心溶接'}],
+    'WS-200-007': [{type:'known',name:'スリーブ有軸'}],
+    'WS-200-008': [{type:'known',name:'スリーブ有軸'}],
+    'WS-200-009': [{type:'known',name:'乙軸'}],
+    'WS-200-010': [],
+    'WS-200-011': [],
+    'WS-200-012': [{type:'known',name:'スリーブ有軸'}],
+    'WS-200-013': [],'WS-200-014': [],'WS-200-015': [],'WS-200-016': [],
+    'WS-200-017': [],
+    'WS-200-018': [{type:'known',name:'輪心溶接'},{type:'known',name:'スリーブ有軸'}],
+    'WS-200-019': [],
+    'WS-200-020': [{type:'known',name:'輪心溶接'}],
+    'WS-200-021': [],'WS-200-022': [],
+    'WS-200-023': [{type:'known',name:'輪心溶接'}],
+    'WS-200-024': [],
+    'WS-200-025': [],'WS-200-026': [],
+    'WS-200-027': [{type:'known',name:'輪心溶接'}],
+    'WS-200-028': [],
+    'WS-200-029': [{type:'known',name:'輪心溶接'}],
+    'WS-200-030': [{type:'known',name:'輪心溶接'}],
+    'WS-200-031': [],'WS-200-032': [],
+  };
+
+  let n = 1;
+  const vehicles200 = v200order.map(vid => {
+    const slots = [];
+    for (let i = 1; i <= 4; i++) {
+      const id = `WS-200-${String(n).padStart(3,'0')}`;
+      ws[id] = {
+        id, group: '200',
+        originSlot: `${vid}-${i}軸`,
+        issues: (issues200[id] || []).map(x => ({...x})),
+        history: [{ year: 'R8', from: '（初期装着）', to: `${vid}号車${i}軸` }],
+        scrapped: false,
+      };
+      slots.push(id);
+      n++;
+    }
+    return { id: vid, group: '200', retired: false, separated: false,
+             separationReason: null, slots };
+  });
+  const sparePool200 = [];
+  for (let i = 33; i <= 35; i++) {
+    const id = `WS-200-${String(i).padStart(3,'0')}`;
+    ws[id] = { id, group: '200', originSlot: `予備${i-32}`,
+               issues: [], history: [], scrapped: false };
+    sparePool200.push(id);
+  }
+
+  const v250order = [251, 252, 253];
+  const issues250 = {
+    'WS-250-001': [],'WS-250-002': [],'WS-250-003': [],'WS-250-004': [],
+    'WS-250-005': [],'WS-250-006': [],'WS-250-007': [],'WS-250-008': [],
+    'WS-250-009': [{type:'known',name:'輪心溶接'}],
+    'WS-250-010': [{type:'known',name:'乙軸'}],
+    'WS-250-011': [],'WS-250-012': [],
+  };
+  let m = 1;
+  const vehicles250 = v250order.map(vid => {
+    const slots = [];
+    for (let i = 1; i <= 4; i++) {
+      const id = `WS-250-${String(m).padStart(3,'0')}`;
+      ws[id] = {
+        id, group: '250',
+        originSlot: `${vid}-${i}軸`,
+        issues: (issues250[id] || []).map(x => ({...x})),
+        history: [{ year: 'R8', from: '（初期装着）', to: `${vid}号車${i}軸` }],
+        scrapped: false,
+      };
+      slots.push(id);
+      m++;
+    }
+    return { id: vid, group: '250', retired: false, separated: false,
+             separationReason: null, slots };
+  });
+  const sparePool250 = [];
+  for (let i = 13; i <= 16; i++) {
+    const id = `WS-250-${String(i).padStart(3,'0')}`;
+    ws[id] = { id, group: '250', originSlot: `予備${i-12}`,
+               issues: [], history: [], scrapped: false };
+    sparePool250.push(id);
+  }
+
+  return {
+    fiscalYear: 'R8',
+    wheelsets: ws,
+    vehicles200,
+    vehicles250,
+    sparePool200,
+    sparePool250,
+    scrap: [],
+    log: [],
+    undoStack: [],
+    redoStack: [],
+  };
+}
+
+let state = buildInitialState();
+
+// ============================================================
+// UI ユーティリティ
+// ============================================================
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function snapshotState() {
+  return JSON.parse(JSON.stringify({
+    fiscalYear: state.fiscalYear,
+    wheelsets: state.wheelsets,
+    vehicles200: state.vehicles200,
+    vehicles250: state.vehicles250,
+    sparePool200: state.sparePool200,
+    sparePool250: state.sparePool250,
+    scrap: state.scrap,
+    log: state.log,
+  }));
+}
+
+function pushUndo() {
+  state.undoStack.push(snapshotState());
+  if (state.undoStack.length > 50) state.undoStack.shift();
+  state.redoStack = [];
+}
+
+// 輪軸の旧装着位置を「旧〇〇号車〇軸」形式で返す
+function wsOriginLabel(wsId) {
+  const ws = state.wheelsets[wsId];
+  if (!ws || !ws.originSlot || ws.originSlot.startsWith('予備')) return wsId;
+  const m = ws.originSlot.match(/^(\d+)-(\d+)軸$/);
+  if (m) return `旧${m[1]}号車${m[2]}軸`;
+  return `旧${ws.originSlot}`;
+}
+
+// ============================================================
+// 全リセット
+// ============================================================
+function confirmReset() {
+  showDialog({
+    title: '全データリセット',
+    message: '現在のデータをすべて初期状態に戻します。この操作はUndoできません。',
+    buttons: [
+      { label: 'リセット実行', className: 'btn-danger', onClick: () => {
+        state = buildInitialState();
+        document.getElementById('year-display').textContent = state.fiscalYear;
+        renderAll();
+        showToast('初期状態にリセットしました');
+      }},
+      { label: 'キャンセル', className: 'btn-cancel', onClick: () => {} },
+    ],
+  });
+}
+
+// ============================================================
+// 年度管理・作業計画
+// ============================================================
+function changeYear(delta) {
+  const idx = FISCAL_YEARS.indexOf(state.fiscalYear);
+  const newIdx = Math.max(0, Math.min(FISCAL_YEARS.length - 1, idx + delta));
+  state.fiscalYear = FISCAL_YEARS[newIdx];
+  document.getElementById('year-display').textContent = state.fiscalYear;
+}
+
+function logAction(text) {
+  state.log.push(`${state.fiscalYear} ${text}`);
+  renderDiary();
+}
+
+function renderDiary() {
+  const el = document.getElementById('diary-log');
+  el.innerHTML = '';
+  state.log.forEach(entry => {
+    const d = document.createElement('div');
+    d.textContent = entry;
+    el.appendChild(d);
+  });
+  el.scrollTop = el.scrollHeight;
+}
+
+function exportDiary() {
+  const text = state.log.join('\n');
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `作業計画_${state.fiscalYear}.txt`;
+  a.click();
+}
+
+// ============================================================
+// Undo / Redo
+// ============================================================
+function undo() {
+  if (state.undoStack.length === 0) { showToast('これ以上戻れません'); return; }
+  state.redoStack.push(snapshotState());
+  Object.assign(state, state.undoStack.pop());
+  renderAll();
+}
+
+function redo() {
+  if (state.redoStack.length === 0) { showToast('これ以上やり直せません'); return; }
+  state.undoStack.push(snapshotState());
+  Object.assign(state, state.redoStack.pop());
+  renderAll();
+}
+
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey && e.key === 'z') { e.preventDefault(); undo(); }
+  if (e.ctrlKey && e.key === 'y') { e.preventDefault(); redo(); }
+});
+
+// ============================================================
+// セーブ & ロード
+// ============================================================
+function saveState() {
+  const data = snapshotState();
+  const json = JSON.stringify(data, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const a = document.createElement('a');
+  const now = new Date();
+  const dateStr = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
+  a.download = `tram200-${state.fiscalYear}-${dateStr}.json`;
+  a.href = URL.createObjectURL(blob);
+  a.click();
+}
+
+function loadState(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!data.wheelsets || !data.vehicles200 || !data.vehicles250) {
+        showToast('ファイルの形式が正しくありません');
+        return;
+      }
+      pushUndo();
+      Object.assign(state, data);
+      state.undoStack = state.undoStack || [];
+      state.redoStack = state.redoStack || [];
+      document.getElementById('year-display').textContent = state.fiscalYear;
+      renderAll();
+      showToast('ロード完了');
+    } catch (_) {
+      showToast('JSONの解析に失敗しました');
+    }
+    event.target.value = '';
+  };
+  reader.readAsText(file);
+}
+
+// ============================================================
+// 輪軸チップ描画（長方形・課題セグメント）
+// ============================================================
+function renderWheelsetChip(id, draggable) {
+  const ws = state.wheelsets[id];
+  const knownIssues = ws.issues.filter(i => i.type === 'known').map(i => i.name);
+  const hasFree = ws.issues.some(i => i.type === 'free');
+
+  const chip = document.createElement('div');
+  chip.className = 'wheelset-chip';
+  chip.dataset.wsId = id;
+  chip.draggable = !!draggable;
+
+  const originNote = ws.originSlot && !ws.originSlot.startsWith('予備')
+    ? ` (旧${ws.originSlot})` : '';
+  chip.title = id + originNote;
+
+  if (knownIssues.length === 0 && !hasFree) {
+    // 良好：グリーン
+    const inner = document.createElement('div');
+    inner.className = 'ws-good';
+    inner.textContent = '良好';
+    chip.appendChild(inner);
+  } else if (knownIssues.length === 0 && hasFree) {
+    // 自由記載のみ：黄
+    const inner = document.createElement('div');
+    inner.className = 'ws-free';
+    inner.textContent = '!';
+    chip.appendChild(inner);
+  } else {
+    // 既知課題：色付きセグメント
+    knownIssues.forEach(name => {
+      const seg = document.createElement('div');
+      seg.className = 'ws-issue-seg';
+      seg.style.background = ISSUE_COLORS[name];
+      seg.textContent = ISSUE_SHORT[name] || name;
+      chip.appendChild(seg);
+    });
+    if (hasFree) {
+      const badge = document.createElement('span');
+      badge.className = 'issue-badge';
+      badge.textContent = '!';
+      chip.appendChild(badge);
+    }
+  }
+
+  chip.addEventListener('click', e => { e.stopPropagation(); openModal(id); });
+  return chip;
+}
+
+// ============================================================
+// ドラッグ&ドロップ
+// ============================================================
+let dragInfo = null;
+
+function setupDragSrc(el, info) {
+  el.draggable = true;
+  el.addEventListener('dragstart', e => {
+    dragInfo = info;
+    el.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.stopPropagation();
+  });
+  el.addEventListener('dragend', () => {
+    dragInfo = null;
+    el.classList.remove('dragging');
+  });
+}
+
+function setupDropTarget(el, dropTarget) {
+  el.addEventListener('dragover', e => {
+    if (!dragInfo) return;
+    if (isValidDrop(dragInfo, dropTarget)) {
+      e.preventDefault();
+      e.stopPropagation();
+      el.classList.add('drag-over');
+    }
+  });
+  el.addEventListener('dragleave', e => {
+    if (!el.contains(e.relatedTarget)) el.classList.remove('drag-over');
+  });
+  el.addEventListener('drop', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    el.classList.remove('drag-over');
+    if (!dragInfo) return;
+    if (isValidDrop(dragInfo, dropTarget)) {
+      executeDrop(dragInfo, dropTarget);
+    } else {
+      explainDropError(dragInfo, dropTarget);
+    }
+  });
+}
+
+function getVehicle(vehicleId) {
+  return state.vehicles200.find(v => v.id === vehicleId) ||
+         state.vehicles250.find(v => v.id === vehicleId);
+}
+
+function getSeparatedVehicle() {
+  return state.vehicles200.find(v => v.separated) ||
+         state.vehicles250.find(v => v.separated) || null;
+}
+
+function isValidDrop(src, dst) {
+  const ws = state.wheelsets[src.wsId];
+  if (!ws || ws.scrapped) return false;
+
+  if (dst.type === 'scrap') return true;
+
+  if (src.type === 'vehicle-slot' && dst.type === 'spare-pool') {
+    const v = getVehicle(src.vehicleId);
+    if (!v || !v.separated) return false;
+    if (ws.group !== dst.group) return false;
+    return true;
+  }
+
+  if (src.type === 'spare-pool' && dst.type === 'spare-pool') return false;
+
+  if (dst.type === 'vehicle-slot') {
+    const dstV = getVehicle(dst.vehicleId);
+    if (!dstV || !dstV.separated) return false;
+    if (ws.group !== dstV.group) return false;
+    if (src.type === 'vehicle-slot' && src.vehicleId !== dst.vehicleId) return false;
+    return true;
+  }
+
+  return false;
+}
+
+function explainDropError(src, dst) {
+  const ws = state.wheelsets[src.wsId];
+  if (dst.type === 'scrap') { showToast('この操作は実行できません'); return; }
+  const dstGroup = dst.group ||
+    (dst.vehicleId ? (getVehicle(dst.vehicleId) || {}).group : null);
+  if (ws && dstGroup && ws.group !== dstGroup) {
+    showToast(`規格不一致: ${ws.group}形輪軸は${dstGroup}形に装着できません`);
+    return;
+  }
+  if (dst.type === 'vehicle-slot') {
+    const v = getVehicle(dst.vehicleId);
+    if (v && !v.separated) { showToast('車体分離してから操作してください'); return; }
+  }
+  if (src.type === 'vehicle-slot' && dst.type === 'vehicle-slot' &&
+      src.vehicleId !== dst.vehicleId) {
+    showToast('他車両スロットへの直接移設はできません。一旦予備庫へ移動してください');
+    return;
+  }
+  showToast('この操作は実行できません');
+}
+
+function getLocationLabel(src) {
+  if (src.type === 'vehicle-slot') return `${src.vehicleId}号車${src.slotIndex + 1}軸`;
+  if (src.type === 'spare-pool') return '予備庫';
+  return '廃棄軸';
+}
+
+function removeFromSource(src) {
+  if (src.type === 'vehicle-slot') {
+    getVehicle(src.vehicleId).slots[src.slotIndex] = null;
+  } else if (src.type === 'spare-pool') {
+    const pool = src.group === '200' ? state.sparePool200 : state.sparePool250;
+    const idx = pool.indexOf(src.wsId);
+    if (idx !== -1) pool.splice(idx, 1);
+  }
+}
+
+function swapToSlot(src, dst, existingWsId) {
+  const dstV = getVehicle(dst.vehicleId);
+  if (src.type === 'vehicle-slot') {
+    getVehicle(src.vehicleId).slots[src.slotIndex] = existingWsId;
+    dstV.slots[dst.slotIndex] = src.wsId;
+  } else if (src.type === 'spare-pool') {
+    const pool = src.group === '200' ? state.sparePool200 : state.sparePool250;
+    const idx = pool.indexOf(src.wsId);
+    if (idx !== -1) pool[idx] = existingWsId;
+    dstV.slots[dst.slotIndex] = src.wsId;
+  }
+}
+
+function executeDrop(src, dst) {
+  pushUndo();
+  const ws = state.wheelsets[src.wsId];
+  const fromLabel = getLocationLabel(src);
+
+  if (dst.type === 'scrap') {
+    removeFromSource(src);
+    ws.scrapped = true;
+    state.scrap.push(src.wsId);
+    ws.history.push({ year: state.fiscalYear, from: fromLabel, to: '廃棄軸' });
+    logAction(`廃棄軸 ← ${wsOriginLabel(src.wsId)}（${fromLabel}より）`);
+    renderAll();
+    return;
+  }
+
+  if (dst.type === 'spare-pool') {
+    getVehicle(src.vehicleId).slots[src.slotIndex] = null;
+    (dst.group === '200' ? state.sparePool200 : state.sparePool250).push(src.wsId);
+    ws.history.push({ year: state.fiscalYear, from: fromLabel, to: '予備庫' });
+    logAction(`${fromLabel} → 予備庫（${wsOriginLabel(src.wsId)}）`);
+    renderAll();
+    return;
+  }
+
+  if (dst.type === 'vehicle-slot') {
+    const dstV = getVehicle(dst.vehicleId);
+    const existingWsId = dstV.slots[dst.slotIndex];
+    const dstLabel = `${dst.vehicleId}号車${dst.slotIndex + 1}軸`;
+
+    if (existingWsId) {
+      const existingWs = state.wheelsets[existingWsId];
+      swapToSlot(src, dst, existingWsId);
+      ws.history.push({ year: state.fiscalYear, from: fromLabel, to: dstLabel });
+      existingWs.history.push({ year: state.fiscalYear, from: dstLabel, to: fromLabel });
+      logAction(`${dstLabel} 交換: ${wsOriginLabel(src.wsId)}（${fromLabel}より）↔ ${wsOriginLabel(existingWsId)}`);
+    } else {
+      removeFromSource(src);
+      dstV.slots[dst.slotIndex] = src.wsId;
+      ws.history.push({ year: state.fiscalYear, from: fromLabel, to: dstLabel });
+      logAction(`${dstLabel} ← ${wsOriginLabel(src.wsId)}（${fromLabel}より）`);
+    }
+    renderAll();
+  }
+}
+
+// ============================================================
+// ダイアログ
+// ============================================================
+function showDialog({ title, message, buttons }) {
+  const overlay = document.getElementById('dialog-overlay');
+  const dlg = document.getElementById('dialog');
+  dlg.innerHTML = `
+    <h3>${title}</h3>
+    ${message ? `<p>${message}</p>` : ''}
+    <div class="dialog-btns"></div>
+  `;
+  const btnsDiv = dlg.querySelector('.dialog-btns');
+  buttons.forEach(({ label, className, onClick }) => {
+    const btn = document.createElement('button');
+    btn.className = className;
+    btn.textContent = label;
+    btn.onclick = () => { overlay.classList.remove('show'); onClick(); };
+    btnsDiv.appendChild(btn);
+  });
+  overlay.classList.add('show');
+}
+
+// ============================================================
+// 車体分離・結合
+// ============================================================
+function trySeperateVehicle(vehicleId) {
+  const already = getSeparatedVehicle();
+  if (already && already.id !== vehicleId) {
+    showToast(`${already.id}号車が分離中です。先に車体結合してください`);
+    return;
+  }
+  showDialog({
+    title: `${vehicleId}号車 車体分離`,
+    message: '分離理由を選択してください',
+    buttons: [
+      { label: '年検査', className: 'btn-primary',
+        onClick: () => executeSeparate(vehicleId, '年検査') },
+      { label: 'その他', className: 'btn-primary',
+        onClick: () => {
+          const reason = prompt('分離理由を入力してください:') || 'その他';
+          executeSeparate(vehicleId, reason);
+        }},
+      { label: 'キャンセル', className: 'btn-cancel', onClick: () => {} },
+    ],
+  });
+}
+
+function executeSeparate(vehicleId, reason) {
+  pushUndo();
+  const v = getVehicle(vehicleId);
+  v.separated = true;
+  v.separationReason = reason;
+  logAction(`${vehicleId}号車 車体分離（${reason}）`);
+  renderAll();
+}
+
+function tryCoupleVehicle(vehicleId) {
+  const v = getVehicle(vehicleId);
+  const mountedCount = v.slots.filter(s => s !== null).length;
+  if (mountedCount < 4) {
+    showToast(`輪軸が不足しています（${mountedCount}本 / 4本必要）`);
+    return;
+  }
+  pushUndo();
+  v.separated = false;
+  v.separationReason = null;
+  logAction(`${vehicleId}号車 車体結合`);
+  renderAll();
+}
+
+// ============================================================
+// 廃車
+// ============================================================
+function confirmRetire(vehicleId) {
+  showDialog({
+    title: `${vehicleId}号車 廃車執行`,
+    message: 'この操作は廃車を実行します（Undoで取り消し可能）。よろしいですか？',
+    buttons: [
+      { label: '廃車実行', className: 'btn-danger',
+        onClick: () => executeRetire(vehicleId) },
+      { label: 'キャンセル', className: 'btn-cancel', onClick: () => {} },
+    ],
+  });
+}
+
+function executeRetire(vehicleId) {
+  pushUndo();
+  const v = getVehicle(vehicleId);
+  const pool = v.group === '200' ? state.sparePool200 : state.sparePool250;
+  v.slots.forEach((wsId, i) => {
+    if (!wsId) return;
+    pool.push(wsId);
+    state.wheelsets[wsId].history.push({
+      year: state.fiscalYear,
+      from: `${vehicleId}号車${i + 1}軸`,
+      to: '予備庫（廃車回収）',
+    });
+  });
+  v.slots = [null, null, null, null];
+  v.retired = true;
+  v.separated = false;
+  logAction(`${vehicleId}号車 廃車執行`);
+  renderAll();
+}
+
+// ============================================================
+// 台帳モーダル
+// ============================================================
+let modalWsId = null;
+
+function openModal(wsId) {
+  modalWsId = wsId;
+  renderModal();
+  document.getElementById('modal-overlay').classList.add('show');
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('show');
+  modalWsId = null;
+}
+
+function getCurrentLocation(wsId) {
+  for (const v of [...state.vehicles200, ...state.vehicles250]) {
+    const idx = v.slots.indexOf(wsId);
+    if (idx !== -1) return `${v.id}号車 ${idx + 1}軸`;
+  }
+  if (state.sparePool200.includes(wsId) || state.sparePool250.includes(wsId)) return '予備庫';
+  if (state.scrap.includes(wsId)) return '廃棄軸';
+  return '不明';
+}
+
+function renderModal() {
+  if (!modalWsId) return;
+  const ws = state.wheelsets[modalWsId];
+  const modal = document.getElementById('modal');
+  const originNote = ws.originSlot && !ws.originSlot.startsWith('予備')
+    ? ` (旧 ${ws.originSlot})` : '';
+  const knownNames = ws.issues.filter(i => i.type === 'known').map(i => i.name);
+
+  const issueBtnClass = name =>
+    name === '輪心溶接' ? 'btn-issue-weld' :
+    name === 'スリーブ有軸' ? 'btn-issue-sleeve' : 'btn-issue-otsu';
+
+  modal.innerHTML = `
+    <h2>${ws.id}<span style="font-size:11px;color:#a8d8ea">${originNote}</span></h2>
+    <div class="modal-sub">グループ: ${ws.group}形用 ／ 現在地: ${getCurrentLocation(ws.id)}</div>
+    <h4>課題</h4>
+    <ul class="issue-list" id="modal-issue-list"></ul>
+    <div class="known-issue-btns" id="modal-known-btns"></div>
+    <div class="free-issue-row">
+      <input id="free-issue-input" type="text" placeholder="自由記載課題">
+      <button onclick="addFreeIssue()">追加</button>
+    </div>
+    <h4>移設履歴</h4>
+    <ul class="history-list" id="modal-history-list"></ul>
+    <button id="modal-close" onclick="closeModal()">閉じる</button>
+  `;
+
+  const issueList = modal.querySelector('#modal-issue-list');
+  ws.issues.forEach((issue, idx) => {
+    const li = document.createElement('li');
+    const dot = document.createElement('span');
+    const color = issue.type === 'known' ? (ISSUE_COLORS[issue.name] || '#fff') : '#c0a000';
+    dot.style.cssText = `width:10px;height:10px;border-radius:50%;background:${color};display:inline-block;flex-shrink:0`;
+    li.appendChild(dot);
+    li.appendChild(document.createTextNode(' ' + (issue.name || issue.text)));
+    const rm = document.createElement('button');
+    rm.className = 'remove-btn';
+    rm.textContent = '×';
+    rm.onclick = () => removeIssue(idx);
+    li.appendChild(rm);
+    issueList.appendChild(li);
+  });
+
+  const btnsDiv = modal.querySelector('#modal-known-btns');
+  KNOWN_ISSUES.forEach(name => {
+    const has = knownNames.includes(name);
+    const btn = document.createElement('button');
+    btn.className = issueBtnClass(name) + (has ? ' disabled-issue' : '');
+    btn.textContent = name;
+    btn.disabled = has;
+    if (!has) btn.onclick = () => addKnownIssue(name);
+    btnsDiv.appendChild(btn);
+  });
+
+  const histList = modal.querySelector('#modal-history-list');
+  ws.history.forEach(h => {
+    const li = document.createElement('li');
+    li.textContent = `${h.year}  ${h.from} → ${h.to}`;
+    histList.appendChild(li);
+  });
+}
+
+function addKnownIssue(name) {
+  pushUndo();
+  state.wheelsets[modalWsId].issues.push({ type: 'known', name });
+  renderModal();
+  renderAll();
+}
+
+function addFreeIssue() {
+  const input = document.getElementById('free-issue-input');
+  const text = input.value.trim();
+  if (!text) return;
+  pushUndo();
+  state.wheelsets[modalWsId].issues.push({ type: 'free', text });
+  input.value = '';
+  renderModal();
+  renderAll();
+}
+
+function removeIssue(idx) {
+  pushUndo();
+  state.wheelsets[modalWsId].issues.splice(idx, 1);
+  renderModal();
+  renderAll();
+}
+
+// ============================================================
+// 描画
+// ============================================================
+function renderWheelsetSlot(wsId, vehicleId, slotIndex, isSeparated) {
+  const slot = document.createElement('div');
+  slot.className = 'slot';
+  if (wsId) {
+    const chip = renderWheelsetChip(wsId, isSeparated);
+    if (isSeparated) {
+      setupDragSrc(chip, { type: 'vehicle-slot', vehicleId, slotIndex, wsId });
+    }
+    slot.appendChild(chip);
+  }
+  setupDropTarget(slot, { type: 'vehicle-slot', vehicleId, slotIndex });
+  const lbl = document.createElement('span');
+  lbl.className = 'slot-label';
+  lbl.textContent = `${vehicleId}-${slotIndex + 1}軸`;
+  slot.appendChild(lbl);
+  return slot;
+}
+
+function renderVehicleCard(v) {
+  const card = document.createElement('div');
+  card.className = 'vehicle-card' +
+    (v.separated ? ' separated' : '') +
+    (v.retired ? ' retired' : '');
+
+  const hdr = document.createElement('div');
+  hdr.className = 'vehicle-card-header';
+
+  const name = document.createElement('span');
+  name.className = 'vehicle-name';
+  name.textContent = `${v.id}号車`;
+  hdr.appendChild(name);
+
+  if (v.separated) {
+    const lbl = document.createElement('span');
+    lbl.className = 'sep-label';
+    lbl.textContent = '分離中';
+    hdr.appendChild(lbl);
+  }
+
+  const btnSep = document.createElement('button');
+  btnSep.className = 'btn-sep' + (v.separated ? ' active' : '');
+  btnSep.textContent = v.separated ? '車体結合' : '車体分離';
+  btnSep.onclick = () => v.separated ? tryCoupleVehicle(v.id) : trySeperateVehicle(v.id);
+  hdr.appendChild(btnSep);
+
+  const btnRetire = document.createElement('button');
+  btnRetire.className = 'btn-retire';
+  btnRetire.textContent = '廃車';
+  btnRetire.onclick = () => confirmRetire(v.id);
+  hdr.appendChild(btnRetire);
+  card.appendChild(hdr);
+
+  const slotsDiv = document.createElement('div');
+  slotsDiv.className = 'slots';
+  v.slots.forEach((wsId, i) => {
+    slotsDiv.appendChild(renderWheelsetSlot(wsId, v.id, i, v.separated));
+  });
+  card.appendChild(slotsDiv);
+  return card;
+}
+
+function renderSparePool(group) {
+  const sec = document.createElement('div');
+  sec.className = 'spare-section';
+  const title = document.createElement('h4');
+  title.textContent = `${group}形 予備庫`;
+  sec.appendChild(title);
+
+  const pool = document.createElement('div');
+  pool.className = 'spare-pool';
+  setupDropTarget(pool, { type: 'spare-pool', group });
+
+  const ids = group === '200' ? state.sparePool200 : state.sparePool250;
+  ids.forEach(id => {
+    const ws = state.wheelsets[id];
+    const item = document.createElement('div');
+    item.className = 'spare-item';
+    const chip = renderWheelsetChip(id, true);
+    setupDragSrc(chip, { type: 'spare-pool', group, wsId: id });
+    item.appendChild(chip);
+    const lbl = document.createElement('div');
+    lbl.className = 'spare-label';
+    lbl.textContent = ws.originSlot && !ws.originSlot.startsWith('予備')
+      ? `旧 ${ws.originSlot}` : id.slice(-3);
+    item.appendChild(lbl);
+    pool.appendChild(item);
+  });
+  sec.appendChild(pool);
+  return sec;
+}
+
+function renderScrapZone(group) {
+  const sec = document.createElement('div');
+  sec.className = 'scrap-section';
+  const title = document.createElement('h4');
+  title.textContent = `${group}形 廃棄軸`;
+  sec.appendChild(title);
+
+  const pool = document.createElement('div');
+  pool.className = 'scrap-pool';
+  setupDropTarget(pool, { type: 'scrap', group });
+
+  state.scrap
+    .filter(id => state.wheelsets[id].group === group)
+    .forEach(id => {
+      const ws = state.wheelsets[id];
+      const item = document.createElement('div');
+      item.className = 'spare-item';
+      item.appendChild(renderWheelsetChip(id, false));
+      const lbl = document.createElement('div');
+      lbl.className = 'spare-label';
+      lbl.textContent = ws.originSlot && !ws.originSlot.startsWith('予備')
+        ? `旧 ${ws.originSlot}` : id.slice(-3);
+      item.appendChild(lbl);
+      pool.appendChild(item);
+    });
+  sec.appendChild(pool);
+  return sec;
+}
+
+function renderGroup200() {
+  const el = document.getElementById('group-200');
+  el.innerHTML = '';
+  const title = document.createElement('div');
+  title.className = 'group-title';
+  title.textContent = '── 200形グループ ──';
+  el.appendChild(title);
+  const grid = document.createElement('div');
+  grid.className = 'vehicle-grid';
+  state.vehicles200.forEach(v => grid.appendChild(renderVehicleCard(v)));
+  el.appendChild(grid);
+  el.appendChild(renderSparePool('200'));
+  el.appendChild(renderScrapZone('200'));
+}
+
+function renderGroup250() {
+  const el = document.getElementById('group-250');
+  el.innerHTML = '';
+  const title = document.createElement('div');
+  title.className = 'group-title';
+  title.textContent = '── 250形グループ ──';
+  el.appendChild(title);
+  const grid = document.createElement('div');
+  grid.className = 'vehicle-grid';
+  state.vehicles250.forEach(v => grid.appendChild(renderVehicleCard(v)));
+  el.appendChild(grid);
+  el.appendChild(renderSparePool('250'));
+  el.appendChild(renderScrapZone('250'));
+}
+
+function renderAll() {
+  renderGroup200();
+  renderGroup250();
+  renderDiary();
+}
+
+// ============================================================
+// 初期表示
+// ============================================================
+renderAll();
+</script>
+</body>
+</html>
