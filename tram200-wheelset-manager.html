@@ -657,7 +657,7 @@ function explainDropError(src, dst) {
   }
   if (dst.type === 'vehicle-slot') {
     const v = getVehicle(dst.vehicleId);
-    if (v && !v.separated) { showToast('車体分離してから操作してください'); return; }
+    if (v && !v.separated) { showToast('車体上げしてから操作してください'); return; }
   }
   if (src.type === 'vehicle-slot' && dst.type === 'vehicle-slot' &&
       src.vehicleId !== dst.vehicleId) {
@@ -764,16 +764,16 @@ function showDialog({ title, message, buttons }) {
 }
 
 // ============================================================
-// 車体分離・結合
+// 車体上げ・下げ
 // ============================================================
 function trySeperateVehicle(vehicleId) {
   const already = getSeparatedVehicle();
   if (already && already.id !== vehicleId) {
-    showToast(`${already.id}号車が分離中です。先に車体結合してください`);
+    showToast(`${already.id}号車が分離中です。先に車体下げしてください`);
     return;
   }
   showDialog({
-    title: `${vehicleId}号車 車体分離`,
+    title: `${vehicleId}号車 車体上げ`,
     message: '分離理由を選択してください',
     buttons: [
       { label: '年検査', className: 'btn-primary',
@@ -795,7 +795,7 @@ function executeSeparate(vehicleId, reason) {
   const v = getVehicle(vehicleId);
   v.separated = true;
   v.separationReason = reason;
-  logAction(`${vehicleId}号車 車体分離（${reason}）`);
+  logAction(`${vehicleId}号車 車体上げ（${reason}）`);
   renderAll();
 }
 
@@ -809,7 +809,7 @@ function tryCoupleVehicle(vehicleId) {
   pushUndo();
   v.separated = false;
   v.separationReason = null;
-  logAction(`${vehicleId}号車 車体結合`);
+  logAction(`${vehicleId}号車 車体下げ`);
   renderAll();
 }
 
@@ -1064,7 +1064,7 @@ function renderVehicleCard(v) {
 
   const btnSep = document.createElement('button');
   btnSep.className = 'btn-sep' + (v.separated ? ' active' : '');
-  btnSep.textContent = v.separated ? '車体結合' : '車体分離';
+  btnSep.textContent = v.separated ? '車体下げ' : '車体上げ';
   btnSep.onclick = () => v.separated ? tryCoupleVehicle(v.id) : trySeperateVehicle(v.id);
   hdr.appendChild(btnSep);
 
