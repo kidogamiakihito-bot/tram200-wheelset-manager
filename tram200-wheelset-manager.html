@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>札幌市電 輪軸管理システム</title>
+<title>札幌市電 輪軸管理システム v1.0</title>
+<link rel="icon" type="image/png" href="source/logo.png">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'Meiryo', 'Yu Gothic', sans-serif; font-size: 14px;
@@ -15,6 +16,7 @@ body { font-family: 'Meiryo', 'Yu Gothic', sans-serif; font-size: 14px;
           align-items: center; gap: 10px; border-bottom: 2px solid #0f3460;
           flex-shrink: 0; flex-wrap: wrap; }
 #header h1 { font-size: 15px; color: #a8d8ea; white-space: nowrap; }
+#header-logo { height: 28px; width: auto; }
 #year-display { font-size: 18px; font-weight: bold; color: #f0c27f;
                 min-width: 36px; text-align: center; }
 #header button { padding: 4px 10px; background: #0f3460; color: #e0e0e0;
@@ -75,6 +77,7 @@ body { font-family: 'Meiryo', 'Yu Gothic', sans-serif; font-size: 14px;
 /* 輪軸チップ（SVG I字形） */
 .wheelset-chip { cursor: grab; overflow: visible; display: block;
                  -webkit-user-select: none; user-select: none; flex-shrink: 0; }
+.wheelset-chip * { pointer-events: none; }
 .wheelset-chip:hover { transform: scale(1.1); transition: transform 0.1s; }
 .wheelset-chip.dragging { opacity: 0.35; }
 
@@ -128,6 +131,17 @@ button.disabled-issue { opacity: 0.35; cursor: not-allowed; }
 #modal-close { margin-top: 16px; width: 100%; padding: 8px; background: #0f3460;
                color: #e0e0e0; border: 1px solid #a8d8ea; border-radius: 4px; cursor: pointer; }
 
+/* 溶接セレクター */
+.weld-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 12px; }
+.weld-row span { min-width: 90px; color: #a0b0c0; }
+.weld-btns { display: flex; gap: 4px; }
+.weld-btns button { padding: 3px 8px; font-size: 11px; border-radius: 3px;
+                    cursor: pointer; border: 1px solid; }
+.btn-weld-0 { background: #1a3a2a; color: #7dce82; border-color: #7dce82; }
+.btn-weld-1 { background: #3a2010; color: #e67e22; border-color: #e67e22; }
+.btn-weld-2 { background: #3a1010; color: #e74c3c; border-color: #e74c3c; }
+.weld-active { outline: 2px solid #fff; outline-offset: 1px; }
+
 /* ダイアログ */
 #dialog-overlay { position: fixed; inset: 0; background: #0008;
                   display: none; align-items: center; justify-content: center; z-index: 2000; }
@@ -147,6 +161,7 @@ button.disabled-issue { opacity: 0.35; cursor: not-allowed; }
 <body>
 
 <div id="header">
+  <img id="header-logo" src="source/logo.png" alt="">
   <h1>札幌市電 輪軸管理システム</h1>
   <button type="button" onclick="changeYear(-1)">◀</button>
   <span id="year-display">R8</span>
@@ -186,17 +201,19 @@ button.disabled-issue { opacity: 0.35; cursor: not-allowed; }
 // ============================================================
 // 定数
 // ============================================================
-const KNOWN_ISSUES = ['輪心溶接', 'スリーブ有軸', '乙軸'];
+const KNOWN_ISSUES = ['スリーブ有軸', '乙軸'];
 const ISSUE_COLORS = {
-  '輪心溶接':    '#c0392b',
   'スリーブ有軸': '#d35400',
   '乙軸':        '#7d3c98',
 };
 const ISSUE_SHORT = {
-  '輪心溶接':    '溶接',
   'スリーブ有軸': 'スリ',
   '乙軸':        '乙軸',
 };
+// 溶接状態（0=なし, 1=溶接あり）→ 色・テキスト
+const WELD_COLOR = ['#1a7a58', '#c0392b'];
+const WELD_TEXT  = ['良', '溶'];
+const WELD_TEXT_COLOR = ['#a8ecd0', '#fff'];
 const FISCAL_YEARS = ['R6','R7','R8','R9','R10','R11','R12','R13','R14','R15'];
 
 // ============================================================
@@ -206,33 +223,28 @@ function buildInitialState() {
   const ws = {};
 
   const v200order = [244, 221, 222, 246, 214, 211, 212, 241];
+  // 輪心溶接は welds フィールドで管理（top/bottom 各 0〜2）
+  const welds200 = {
+    'WS-200-001': {top:1,bottom:1},
+    'WS-200-002': {top:1,bottom:1},
+    'WS-200-003': {top:1,bottom:1},
+    'WS-200-006': {top:1,bottom:1},
+    'WS-200-013': {top:1,bottom:1},
+    'WS-200-018': {top:1,bottom:1},
+    'WS-200-020': {top:1,bottom:1},
+    'WS-200-023': {top:1,bottom:1},
+    'WS-200-027': {top:1,bottom:1},
+    'WS-200-029': {top:1,bottom:1},
+    'WS-200-030': {top:1,bottom:1},
+  };
   const issues200 = {
-    'WS-200-001': [{type:'known',name:'輪心溶接'},{type:'known',name:'スリーブ有軸'}],
-    'WS-200-002': [{type:'known',name:'輪心溶接'},{type:'known',name:'スリーブ有軸'}],
-    'WS-200-003': [{type:'known',name:'輪心溶接'}],
-    'WS-200-004': [],
-    'WS-200-005': [],
-    'WS-200-006': [{type:'known',name:'輪心溶接'}],
+    'WS-200-001': [{type:'known',name:'スリーブ有軸'}],
+    'WS-200-002': [{type:'known',name:'スリーブ有軸'}],
     'WS-200-007': [{type:'known',name:'スリーブ有軸'}],
     'WS-200-008': [{type:'known',name:'スリーブ有軸'}],
     'WS-200-009': [{type:'known',name:'乙軸'}],
-    'WS-200-010': [],
-    'WS-200-011': [],
     'WS-200-012': [{type:'known',name:'スリーブ有軸'}],
-    'WS-200-013': [],'WS-200-014': [],'WS-200-015': [],'WS-200-016': [],
-    'WS-200-017': [],
-    'WS-200-018': [{type:'known',name:'輪心溶接'},{type:'known',name:'スリーブ有軸'}],
-    'WS-200-019': [],
-    'WS-200-020': [{type:'known',name:'輪心溶接'}],
-    'WS-200-021': [],'WS-200-022': [],
-    'WS-200-023': [{type:'known',name:'輪心溶接'}],
-    'WS-200-024': [],
-    'WS-200-025': [],'WS-200-026': [],
-    'WS-200-027': [{type:'known',name:'輪心溶接'}],
-    'WS-200-028': [],
-    'WS-200-029': [{type:'known',name:'輪心溶接'}],
-    'WS-200-030': [{type:'known',name:'輪心溶接'}],
-    'WS-200-031': [],'WS-200-032': [],
+    'WS-200-018': [{type:'known',name:'スリーブ有軸'}],
   };
 
   let n = 1;
@@ -244,6 +256,7 @@ function buildInitialState() {
         id, group: '200',
         originSlot: `${vid}-${i}軸`,
         issues: (issues200[id] || []).map(x => ({...x})),
+        welds: welds200[id] ? {...welds200[id]} : {top:0, bottom:0},
         history: [{ year: 'R8', from: '（初期装着）', to: `${vid}号車${i}軸` }],
         scrapped: false,
       };
@@ -254,20 +267,21 @@ function buildInitialState() {
              separationReason: null, slots };
   });
   const sparePool200 = [];
-  for (let i = 33; i <= 35; i++) {
+  const spare200Origins = ['241-1軸', '247-3軸', '247-4軸', '予備'];
+  for (let i = 33; i <= 36; i++) {
     const id = `WS-200-${String(i).padStart(3,'0')}`;
-    ws[id] = { id, group: '200', originSlot: `予備${i-32}`,
-               issues: [], history: [], scrapped: false };
+    ws[id] = { id, group: '200', originSlot: spare200Origins[i - 33],
+               issues: [], welds: {top:0,bottom:0}, history: [], scrapped: false };
     sparePool200.push(id);
   }
 
   const v250order = [251, 252, 253];
+  // WS-250-009（253号車1軸）: 1位（上輪）のみ溶接、2位（下輪）は健全
+  const welds250 = {
+    'WS-250-009': {top:1, bottom:0},
+  };
   const issues250 = {
-    'WS-250-001': [],'WS-250-002': [],'WS-250-003': [],'WS-250-004': [],
-    'WS-250-005': [],'WS-250-006': [],'WS-250-007': [],'WS-250-008': [],
-    'WS-250-009': [{type:'known',name:'輪心溶接'}],
     'WS-250-010': [{type:'known',name:'乙軸'}],
-    'WS-250-011': [],'WS-250-012': [],
   };
   let m = 1;
   const vehicles250 = v250order.map(vid => {
@@ -278,6 +292,7 @@ function buildInitialState() {
         id, group: '250',
         originSlot: `${vid}-${i}軸`,
         issues: (issues250[id] || []).map(x => ({...x})),
+        welds: welds250[id] ? {...welds250[id]} : {top:0, bottom:0},
         history: [{ year: 'R8', from: '（初期装着）', to: `${vid}号車${i}軸` }],
         scrapped: false,
       };
@@ -291,7 +306,7 @@ function buildInitialState() {
   for (let i = 13; i <= 16; i++) {
     const id = `WS-250-${String(i).padStart(3,'0')}`;
     ws[id] = { id, group: '250', originSlot: `予備${i-12}`,
-               issues: [], history: [], scrapped: false };
+               issues: [], welds: {top:0,bottom:0}, history: [], scrapped: false };
     sparePool250.push(id);
   }
 
@@ -456,6 +471,15 @@ function loadState(event) {
       Object.assign(state, data);
       state.undoStack = state.undoStack || [];
       state.redoStack = state.redoStack || [];
+      // 旧フォーマット（輪心溶接をissuesで管理）からの移行
+      Object.values(state.wheelsets).forEach(ws => {
+        if (!ws.welds) ws.welds = {top:0, bottom:0};
+        const idx = ws.issues.findIndex(i => i.type === 'known' && i.name === '輪心溶接');
+        if (idx !== -1) {
+          ws.welds = {top:1, bottom:1};
+          ws.issues.splice(idx, 1);
+        }
+      });
       document.getElementById('year-display').textContent = state.fiscalYear;
       renderAll();
       showToast('ロード完了');
@@ -472,20 +496,15 @@ function loadState(event) {
 // ============================================================
 function renderWheelsetChip(id, draggable) {
   const ws = state.wheelsets[id];
-  const knownIssues = ws.issues.filter(i => i.type === 'known').map(i => i.name);
-  const hasFree = ws.issues.some(i => i.type === 'free');
+  const axleIssues = ws.issues.filter(i => i.type === 'known').map(i => i.name);
+  const hasFree    = ws.issues.some(i => i.type === 'free');
+  const welds      = ws.welds || {top:0, bottom:0};
 
   const NS = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(NS, 'svg');
   svg.setAttribute('viewBox', '0 0 36 52');
   svg.setAttribute('width', '36');
   svg.setAttribute('height', '52');
-  svg.setAttribute('class', 'wheelset-chip');
-  svg.dataset.wsId = id;
-
-  const originNote = ws.originSlot && !ws.originSlot.startsWith('予備')
-    ? ` (旧${ws.originSlot})` : '';
-  svg.setAttribute('title', id + originNote);
 
   const mk = (tag, attrs) => {
     const el = document.createElementNS(NS, tag);
@@ -494,7 +513,7 @@ function renderWheelsetChip(id, draggable) {
   };
   const rect = (x, y, w, h, rx, fill) =>
     mk('rect', { x, y, width: w, height: h, rx, fill });
-  const text = (x, y, str, fill = '#fff', size = 9) => {
+  const txt = (x, y, str, fill = '#fff', size = 9) => {
     const t = mk('text', {
       x, y, 'text-anchor': 'middle', 'dominant-baseline': 'central',
       'font-size': size, 'font-weight': 'bold', fill,
@@ -504,54 +523,46 @@ function renderWheelsetChip(id, draggable) {
     return t;
   };
 
-  // 上輪・車軸・下輪の色とテキストを決定
-  let topColor, axleColor, botColor, topText = '', axleText = '', botText = '';
+  // 上輪（y=0〜14）: 溶接状態で色分け
+  const topW = welds.top ? 1 : 0;
+  svg.appendChild(rect(0, 0, 36, 14, 3, WELD_COLOR[topW]));
+  svg.appendChild(txt(18, 7, WELD_TEXT[topW], WELD_TEXT_COLOR[topW]));
 
-  if (knownIssues.length === 0 && !hasFree) {
-    topColor = axleColor = botColor = '#1a7a58';
-    botText = '良';
-  } else if (knownIssues.length === 0) {
-    topColor = axleColor = botColor = '#a08000';
-    botText = '!';
-  } else if (knownIssues.length === 1) {
-    topColor = axleColor = botColor = ISSUE_COLORS[knownIssues[0]];
-    botText = ISSUE_SHORT[knownIssues[0]];
-  } else if (knownIssues.length === 2) {
-    topColor = axleColor = ISSUE_COLORS[knownIssues[0]];
-    botColor = ISSUE_COLORS[knownIssues[1]];
-    topText = ISSUE_SHORT[knownIssues[0]];
-    botText = ISSUE_SHORT[knownIssues[1]];
-  } else {
-    topColor  = ISSUE_COLORS[knownIssues[0]];
-    axleColor = ISSUE_COLORS[knownIssues[1]];
-    botColor  = ISSUE_COLORS[knownIssues[2]];
-    topText  = ISSUE_SHORT[knownIssues[0]];
-    axleText = ISSUE_SHORT[knownIssues[1]];
-    botText  = ISSUE_SHORT[knownIssues[2]];
-  }
-
-  // 上輪（y=0〜14）
-  svg.appendChild(rect(0, 0, 36, 14, 3, topColor));
-  if (topText) svg.appendChild(text(18, 7, topText));
-
-  // 車軸（y=14〜38）
+  // 車軸（y=14〜38）: スリーブ有軸・乙軸
+  const hasSlv  = axleIssues.includes('スリーブ有軸');
+  const hasOtsu = axleIssues.includes('乙軸');
+  const axleColor = hasSlv ? '#d35400' : hasOtsu ? '#7d3c98' : '#1a7a58';
   svg.appendChild(rect(13, 14, 10, 24, 1, axleColor));
-  if (axleText) svg.appendChild(text(18, 26, axleText, '#fff', 8));
-
-  // 下輪（y=38〜52）
-  svg.appendChild(rect(0, 38, 36, 14, 3, botColor));
-  if (botText) svg.appendChild(text(18, 45, botText,
-    knownIssues.length === 0 && !hasFree ? '#a8ecd0' : '#fff'));
-
-  // 自由記載バッジ（既知課題もある場合）
-  if (hasFree && knownIssues.length > 0) {
-    svg.appendChild(mk('circle', { cx: 32, cy: 5, r: 6, fill: '#a08000' }));
-    svg.appendChild(text(32, 5, '!', '#fff', 8));
+  if (hasSlv && hasOtsu) {
+    svg.appendChild(txt(18, 22, 'スリ', '#fff', 7));
+    svg.appendChild(txt(18, 32, '乙軸', '#fff', 7));
+  } else if (hasSlv) {
+    svg.appendChild(txt(18, 26, 'スリ', '#fff', 8));
+  } else if (hasOtsu) {
+    svg.appendChild(txt(18, 26, '乙軸', '#fff', 8));
   }
 
-  if (draggable) svg.setAttribute('draggable', 'true');
-  svg.addEventListener('click', e => { e.stopPropagation(); openModal(id); });
-  return svg;
+  // 下輪（y=38〜52）: 溶接状態で色分け
+  const botW = welds.bottom ? 1 : 0;
+  svg.appendChild(rect(0, 38, 36, 14, 3, WELD_COLOR[botW]));
+  svg.appendChild(txt(18, 45, WELD_TEXT[botW], WELD_TEXT_COLOR[botW]));
+
+  // 自由記載バッジ
+  if (hasFree) {
+    svg.appendChild(mk('circle', { cx: 32, cy: 5, r: 6, fill: '#a08000' }));
+    svg.appendChild(txt(32, 5, '!', '#fff', 8));
+  }
+
+  // SVG要素はHTML5 drag-and-drop APIに非対応なため、spanでラップする
+  const originNote = ws.originSlot && !ws.originSlot.startsWith('予備')
+    ? ` (旧${ws.originSlot})` : '';
+  const wrap = document.createElement('span');
+  wrap.className = 'wheelset-chip';
+  wrap.dataset.wsId = id;
+  wrap.setAttribute('title', id + originNote);
+  wrap.appendChild(svg);
+  wrap.addEventListener('click', e => { e.stopPropagation(); openModal(id); });
+  return wrap;
 }
 
 // ============================================================
@@ -867,15 +878,18 @@ function renderModal() {
   const originNote = ws.originSlot && !ws.originSlot.startsWith('予備')
     ? ` (旧 ${ws.originSlot})` : '';
   const knownNames = ws.issues.filter(i => i.type === 'known').map(i => i.name);
+  const welds = ws.welds || {top:0, bottom:0};
+  const pos = getWheelPositions(modalWsId);
 
   const issueBtnClass = name =>
-    name === '輪心溶接' ? 'btn-issue-weld' :
     name === 'スリーブ有軸' ? 'btn-issue-sleeve' : 'btn-issue-otsu';
 
   modal.innerHTML = `
     <h2>${ws.id}<span style="font-size:11px;color:#a8d8ea">${originNote}</span></h2>
     <div class="modal-sub">グループ: ${ws.group}形用 ／ 現在地: ${getCurrentLocation(ws.id)}</div>
-    <h4>課題</h4>
+    <h4>溶接状態（輪心）</h4>
+    <div id="modal-weld-section"></div>
+    <h4>軸部課題</h4>
     <ul class="issue-list" id="modal-issue-list"></ul>
     <div class="known-issue-btns" id="modal-known-btns"></div>
     <div class="free-issue-row">
@@ -887,6 +901,29 @@ function renderModal() {
     <button id="modal-close" onclick="closeModal()">閉じる</button>
   `;
 
+  // 溶接セレクター
+  const weldSection = modal.querySelector('#modal-weld-section');
+  [['top', '上輪'], ['bottom', '下輪']].forEach(([side, label]) => {
+    const posNum = side === 'top' ? pos.top : pos.bottom;
+    const posLabel = posNum !== null ? `${posNum}位` : '';
+    const cur = welds[side] ? 1 : 0;
+    const row = document.createElement('div');
+    row.className = 'weld-row';
+    row.innerHTML = `<span>${label}${posLabel ? '（' + posLabel + '）' : ''}</span>`;
+    const btns = document.createElement('div');
+    btns.className = 'weld-btns';
+    [['なし', 0], ['溶接あり', 1]].forEach(([lbl, val]) => {
+      const b = document.createElement('button');
+      b.textContent = lbl;
+      b.className = `btn-weld-${val}` + (cur === val ? ' weld-active' : '');
+      b.onclick = () => setWeld(modalWsId, side, val);
+      btns.appendChild(b);
+    });
+    row.appendChild(btns);
+    weldSection.appendChild(row);
+  });
+
+  // 軸部課題リスト
   const issueList = modal.querySelector('#modal-issue-list');
   ws.issues.forEach((issue, idx) => {
     const li = document.createElement('li');
@@ -920,6 +957,22 @@ function renderModal() {
     li.textContent = `${h.year}  ${h.from} → ${h.to}`;
     histList.appendChild(li);
   });
+}
+
+// 輪軸が装着されている軸番号から位番号を返す（予備・廃棄の場合は null）
+function getWheelPositions(wsId) {
+  for (const v of [...state.vehicles200, ...state.vehicles250]) {
+    const idx = v.slots.indexOf(wsId);
+    if (idx !== -1) return { top: idx * 2 + 1, bottom: idx * 2 + 2 };
+  }
+  return { top: null, bottom: null };
+}
+
+function setWeld(wsId, side, count) {
+  pushUndo();
+  state.wheelsets[wsId].welds[side] = count;
+  renderModal();
+  renderAll();
 }
 
 function addKnownIssue(name) {
